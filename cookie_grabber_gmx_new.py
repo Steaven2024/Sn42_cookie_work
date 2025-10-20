@@ -9,6 +9,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import WebDriverException
 import random
+import re
 from selenium_stealth import stealth
 from selenium.webdriver.common.keys import Keys
 from dotenv import load_dotenv
@@ -319,6 +320,18 @@ def extract_code(html_text: str, plain_text: str, subject_text: str) -> str | No
 
 # ----------- IMAP FETCH (Rambler) -----------
 
+def extract_code_from_subject(subject: str):
+    """
+    Extracts a confirmation code from a subject like:
+    'Your X confirmation code is 123456'
+    Returns the code string or None.
+    """
+    # Look for a sequence of 4–10 digits or alphanumerics after 'is'
+    match = re.search(r'Your X confirmation code is\s*([A-Za-z0-9]+)', subject, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return None
+
 def fetch_latest_x_code_rambler(rambler_user: str, rambler_pass: str,
                                 timeout_sec=TOTAL_TIMEOUT_SEC,
                                 poll_interval=POLL_INTERVAL_SEC):
@@ -347,24 +360,19 @@ def fetch_latest_x_code_rambler(rambler_user: str, rambler_pass: str,
                     ids = _search_ids(M, '(UNSEEN SUBJECT "Your X confirmation code")')
                     if not ids:
                         ids = _search_ids(M, '(SUBJECT "Your X confirmation code")')
-                    # print(f"ids {ids}")
                     ids_sorted = _sorted_recent_ids(M, ids)
-                    # print(f"ids_sorted {ids_sorted}")
                     for msg_id in ids_sorted:
-                        print(f"msg_id {msg_id}")
                         typ, msg_data = M.fetch(msg_id, "(RFC822)")
                         if typ != "OK" or not msg_data or not msg_data[0]:
                             continue
                         msg = email.message_from_bytes(msg_data[0][1])
-                        print(f"msg_id1 {msg_id}")
                         if not _looks_like_x(msg):
                             continue
-                        print(f"msg_id2 {msg_id}")
                         subject = _decode_subject(msg)
                         frm = _from_addr(msg)
                         html_text, plain_text = _get_parts_text(msg)
-                        print(f"msg_id3 {msg_id}")
-                        code = extract_code(html_text, plain_text, subject)
+                        # code = extract_code(html_text, plain_text, subject)
+                        code = extract_code_from_subject(subject)
                         print(f"msg_id4 {code}")
                         if code:
                             logging.info(f"Matched Rambler message: From={frm} | Subject={subject}")
@@ -1512,7 +1520,7 @@ def process_account_state_machine(driver, username, password, accindex):
                             EC.presence_of_element_located((By.CSS_SELECTOR, 'input[name="password"]'))
                         )
                         stage = "password"
-                        rand_sleep(2.1, 3.2)
+                        rand_sleep(1.0, 1.5)
                         logger.info("Moved to password stage.")
                     except Exception:
                         logger.info("No password field yet (maybe verification).")
@@ -1530,17 +1538,17 @@ def process_account_state_machine(driver, username, password, accindex):
                 find_and_fill_input(driver, "email", email)
                 click_next_button(driver)
                 last_action_time = time.time()
-                time.sleep(2)
+                time.sleep(1)
 
                 # Attempt to fetch and apply the confirmation code from IMAP (GMX or Rambler)
                 try:
                     fetched = try_fetch_and_apply_confirmation_code(driver, email, accindex, password)
                     if fetched:
                         logger.info("[VERIF] Confirmation code applied; continuing.")
-                        time.sleep(2)
+                        time.sleep(1)
                         # click next/submit if necessary
                         click_next_button(driver)
-                        rand_sleep(1, 2)
+                        rand_sleep(0.5, 1)
                 except Exception as e:
                     logger.warning(f"[VERIF] Error while fetching/applying code: {e}")
 
@@ -1555,18 +1563,25 @@ def process_account_state_machine(driver, username, password, accindex):
                     if is_confirmation_window_visible(driver):
                         logger.info("Confirmation window detected.")
                         try:
-                            fetched = try_fetch_and_apply_confirmation_code(driver, email, accindex, password)
-                            if fetched:
-                                logger.info("[PASSWORD->CODE] Confirmation code applied after password submit.")
-                                # try to detect home again
-                                try:
-                                    WebDriverWait(driver, 8).until(
-                                        EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="tweetButtonInline"]'))
-                                    )
-                                    stage = "home"
-                                    logger.info("Detected tweet button — login success after code.")
-                                except Exception:
-                                    logger.info("Still waiting for home screen after entering code.")
+                            retry = 0
+                            while retry < 3:
+                                fetched = try_fetch_and_apply_confirmation_code(driver, email, accindex, password)
+                                if fetched:
+                                    logger.info("[PASSWORD->CODE] Confirmation code applied after password submit.")
+                                    time.sleep(1)
+                                    click_next_button(driver)
+                                    # try to detect home again
+                                    try:
+                                        WebDriverWait(driver, 8).until(
+                                            EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="tweetButtonInline"]'))
+                                        )
+                                        stage = "home"
+                                        logger.info("Detected tweet button — login success after code.")
+                                        break
+                                    except Exception:
+                                        logger.info("Still waiting for home screen after entering code.")
+                                        time.sleep(1)
+                                        retry += 1
                         except Exception as e:
                             logger.warning(f"[PASSWORD->CODE] Exception while fetching code: {e}")
                     else:
@@ -1704,7 +1719,6 @@ def main():
                 logger.info(
                     f"Browser initialized for account: {username} (attempt {retry_count+1}/{max_retries})"
                 )
-                logger.info( f"kkkkk3" )
                 # Process the current account
                 success = process_account_state_machine(driver, username, password, current_account_index)
 

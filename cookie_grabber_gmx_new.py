@@ -1386,7 +1386,8 @@ def try_fetch_and_apply_confirmation_code(driver, email_addr, accindex, password
         try:
             if not email_pwd:
                 # fallback: same env var used for GMX passwords
-                _, email_pwd = get_email_and_password_for_index(accindex, password_param)
+                # _, email_pwd = get_email_and_password_for_index(accindex, password_param)
+                email_pwd = extract_gmx_password(accindex)
             code = fetch_latest_x_code_rambler(email_addr, email_pwd, timeout_sec=TOTAL_TIMEOUT_SEC, poll_interval=POLL_INTERVAL_SEC)
         except Exception as e:
             logger.warning(f"[CODE][RAMBLER] Error fetching code: {e}")

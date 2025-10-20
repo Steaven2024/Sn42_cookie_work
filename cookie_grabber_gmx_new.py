@@ -347,23 +347,25 @@ def fetch_latest_x_code_rambler(rambler_user: str, rambler_pass: str,
                     ids = _search_ids(M, '(UNSEEN SUBJECT "Your X confirmation code")')
                     if not ids:
                         ids = _search_ids(M, '(SUBJECT "Your X confirmation code")')
-                    print(f"ids {ids}")
+                    # print(f"ids {ids}")
                     ids_sorted = _sorted_recent_ids(M, ids)
-                    print(f"ids_sorted {ids_sorted}")
+                    # print(f"ids_sorted {ids_sorted}")
                     for msg_id in ids_sorted:
+                        print(f"msg_id {msg_id}")
                         typ, msg_data = M.fetch(msg_id, "(RFC822)")
                         if typ != "OK" or not msg_data or not msg_data[0]:
                             continue
                         msg = email.message_from_bytes(msg_data[0][1])
-
+                        print(f"msg_id1 {msg_id}")
                         if not _looks_like_x(msg):
                             continue
-
+                        print(f"msg_id2 {msg_id}")
                         subject = _decode_subject(msg)
                         frm = _from_addr(msg)
                         html_text, plain_text = _get_parts_text(msg)
-                        
+                        print(f"msg_id3 {msg_id}")
                         code = extract_code(html_text, plain_text, subject)
+                        print(f"msg_id4 {code}")
                         if code:
                             logging.info(f"Matched Rambler message: From={frm} | Subject={subject}")
                             return code

@@ -381,21 +381,33 @@ def _search_ids(M, query):
     return data[0].split()
 
 def _sorted_recent_ids(M, ids):
-    """Sort by INTERNALDATE newest->oldest and cap to MAX_FETCH."""
+    """Return message IDs sorted by INTERNALDATE (newest first)."""
+    if not ids:
+        return []
+
+    # Cap to last MAX_FETCH message IDs (IMAP returns oldest→newest)
+    limited_ids = ids[-MAX_FETCH:]
+
     dated = []
-    for msg_id in ids[-MAX_FETCH:]:
+    for msg_id in limited_ids:
         typ, meta = M.fetch(msg_id, "(INTERNALDATE)")
         if typ != "OK" or not meta or not meta[0]:
             continue
         meta_str = meta[0].decode(errors="ignore")
         try:
+            # Extract the date/time string between quotes
             dts = meta_str.split('"')[1]
             dt = datetime.datetime.strptime(dts, "%d-%b-%Y %H:%M:%S %z")
         except Exception:
             dt = datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
         dated.append((dt, msg_id))
+
+    # Sort newest first
     dated.sort(key=lambda x: x[0], reverse=True)
-    return [mid for _, mid in dated]
+
+    # Return only message IDs (newest first)
+    return [msg_id for _, msg_id in dated]
+
 
 def fetch_latest_x_code(gmx_user:str, gmx_pass:str, timeout_sec=TOTAL_TIMEOUT_SEC, poll_interval=POLL_INTERVAL_SEC):
     end = time.time() + timeout_sec

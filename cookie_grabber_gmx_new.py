@@ -329,7 +329,7 @@ def fetch_latest_x_code_rambler(rambler_user: str, rambler_pass: str,
     end = time.time() + timeout_sec
     try:
         with imaplib.IMAP4_SSL(R_RAMB_HOST, R_RAMB_PORT) as M:
-            logging.info("Connecting to Rambler IMAP…")
+            logging.info(f"Connecting to Rambler IMAP email={rambler_user} password={rambler_pass}…")
             M.login(rambler_user, rambler_pass)
             logging.info("Rambler IMAP login OK.")
             while time.time() < end:

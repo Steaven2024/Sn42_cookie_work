@@ -347,9 +347,9 @@ def fetch_latest_x_code_rambler(rambler_user: str, rambler_pass: str,
                     ids = _search_ids(M, '(UNSEEN SUBJECT "Your X confirmation code")')
                     if not ids:
                         ids = _search_ids(M, '(SUBJECT "Your X confirmation code")')
-
+                    print(f"ids {ids}")
                     ids_sorted = _sorted_recent_ids(M, ids)
-
+                    print(f"ids_sorted {ids_sorted}")
                     for msg_id in ids_sorted:
                         typ, msg_data = M.fetch(msg_id, "(RFC822)")
                         if typ != "OK" or not msg_data or not msg_data[0]:

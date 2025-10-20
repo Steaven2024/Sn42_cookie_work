@@ -1572,7 +1572,7 @@ def process_account_state_machine(driver, username, password, accindex):
                                     click_next_button(driver)
                                     # try to detect home again
                                     try:
-                                        WebDriverWait(driver, 8).until(
+                                        WebDriverWait(driver, 15).until(
                                             EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="tweetButtonInline"]'))
                                         )
                                         stage = "home"

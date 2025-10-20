@@ -46,7 +46,7 @@ R_RAMB_PORT = 993
 TWITTER_LOGIN_URL = "https://twitter.com/i/flow/login"
 
 # X/Twitter typical senders & subject hints
-SENDER_WHITELIST = {"noreply@twitter.com", "security@twitter.com"}
+SENDER_WHITELIST = {"noreply@twitter.com", "security@twitter.com", "info@x.com", "verify@x.com"}
 SUBJECT_HINTS = {"verification", "confirm", "login", "code", "twitter", "x"}
 
 # Timeout/polling
@@ -341,9 +341,12 @@ def fetch_latest_x_code_rambler(rambler_user: str, rambler_pass: str,
                     except imaplib.IMAP4.error:
                         continue
 
-                    ids = _search_ids(M, "UNSEEN")
+                    # ids = _search_ids(M, "UNSEEN")
+                    # if not ids:
+                    #     ids = _search_ids(M, "ALL")
+                    ids = _search_ids(M, '(UNSEEN SUBJECT "Your X confirmation code")')
                     if not ids:
-                        ids = _search_ids(M, "ALL")
+                        ids = _search_ids(M, '(SUBJECT "Your X confirmation code")')
 
                     ids_sorted = _sorted_recent_ids(M, ids)
 
@@ -359,7 +362,7 @@ def fetch_latest_x_code_rambler(rambler_user: str, rambler_pass: str,
                         subject = _decode_subject(msg)
                         frm = _from_addr(msg)
                         html_text, plain_text = _get_parts_text(msg)
-
+                        
                         code = extract_code(html_text, plain_text, subject)
                         if code:
                             logging.info(f"Matched Rambler message: From={frm} | Subject={subject}")

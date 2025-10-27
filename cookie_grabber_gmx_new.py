@@ -1560,7 +1560,7 @@ def process_account_state_machine(driver, username, password, accindex):
                     # After submitting password, some flows ask for confirmation code
                     # Try to fetch code and apply if input is present
                     logger.info("Submitted password; checking for confirmation code input.")
-                    if is_confirmation_window_visible(driver):
+                    if is_confirmation_window_visible(driver, 5):
                         logger.info("Confirmation window detected.")
                         try:
                             retry = 0

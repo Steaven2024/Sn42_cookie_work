@@ -1602,6 +1602,7 @@ def process_account_state_machine(driver, username, password, accindex):
             elif stage == "home" or is_logged_in(driver):
                 logger.info("Login successful; extracting cookies.")
                 login_successful = True
+                rand_sleep(3.1, 5.2)
                 break
 
             # --- 5️⃣ Idle fallback ---

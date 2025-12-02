@@ -476,10 +476,13 @@ logger = logging.getLogger(__name__)
 running_in_docker = os.environ.get("RUNNING_IN_DOCKER", "false").lower() == "true"
 if running_in_docker:
     OUTPUT_DIR = "/app/cookies"
-    logger.info("Docker environment detected, saving cookies to /app/cookies")
+    logger.info(f"Docker environment detected, saving cookies to {OUTPUT_DIR}")
 else:
-    OUTPUT_DIR = "../cookies"
-    logger.info("Local environment detected, saving cookies to ../cookies")
+    # Resolve project root as the parent of the directory containing this script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    OUTPUT_DIR = os.path.join(project_root, "cookies")
+    logger.info(f"Local environment detected, saving cookies to {OUTPUT_DIR}")
 
 # Ensure output directory exists
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -487,11 +490,11 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # Twitter cookie names to extract
 COOKIE_NAMES = ["personalization_id", "kdt", "twid", "ct0", "auth_token", "att"]
 
-# Twitter domains to handle - We will only use twitter.com
-TWITTER_DOMAINS = ["twitter.com"]
+# Twitter domains to handle - We will only use x.com
+TWITTER_DOMAINS = ["x.com"]
 
 # Twitter login URL
-TWITTER_LOGIN_URL = "https://twitter.com/i/flow/login"
+TWITTER_LOGIN_URL = "https://x.com/i/flow/login"
 
 # Constants
 POLLING_INTERVAL = 1  # Check every 1 second
@@ -527,7 +530,7 @@ def get_future_date(days=7, hours=0, minutes=0, seconds=0):
     return future_date.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def create_cookie_template(name, value, domain="twitter.com", expires=None):
+def create_cookie_template(name, value, domain="x.com", expires=None):
     """
     Create a standard cookie template with the given name and value.
     Note: Cookie values should not contain double quotes as they cause errors in Go's HTTP client.
@@ -1217,6 +1220,9 @@ def extract_email_from_password(password, accindex):
         if password.startswith("himynameis"):
             name = password[10:]  # Extract everything after 'himynameis'
             return f"{base_username}+{name}@{domain}"
+        elif password.startswith("himynamewas"):
+            name = password[11:]  # Extract everything after 'himynamewas'
+            return f"{base_username}+{name}@{domain}"
     except:
         pass
 
@@ -1241,7 +1247,8 @@ def extract_cookies(driver):
     logger.info(f"Found {len(browser_cookies)} cookies total")
 
     cookie_values = {}
-    used_domain = "twitter.com"  # Always use twitter.com domain, no conditional check
+    # Always use x.com domain, no conditional check
+    used_domain = "x.com"
 
     for cookie in browser_cookies:
         if cookie["name"] in COOKIE_NAMES:
@@ -1256,17 +1263,17 @@ def extract_cookies(driver):
     # Log missing cookies
     missing_cookies = [name for name in COOKIE_NAMES if name not in cookie_values]
     if missing_cookies:
-        logger.warning(f"Missing cookies: {', '.join(missing_cookies)}")
+        logger.warning(f"Missing expected cookies: {', '.join(missing_cookies)}")
     else:
-        logger.info("All required cookies found")
+        logger.info("All expected cookies found")
 
     return cookie_values, used_domain
 
 
-def generate_cookies_json(cookie_values, domain="twitter.com"):
+def generate_cookies_json(cookie_values, domain="x.com"):
     """Generate the cookies JSON from the provided cookie values."""
-    # Always use twitter.com domain regardless of what's passed in
-    domain = "twitter.com"
+    # Always use x.com domain regardless of what's passed in
+    domain = "x.com"
     logger.info(f"Generating cookies JSON for domain: {domain}")
 
     # Determine expiration dates for different cookie types
@@ -1274,24 +1281,25 @@ def generate_cookies_json(cookie_values, domain="twitter.com"):
     one_month_future = get_future_date(days=30)
 
     cookies = []
-    for name in COOKIE_NAMES:
-        value = cookie_values.get(name, "")
+    
+    # Process all found cookies
+    for name, value in cookie_values.items():
         if value == "":
-            logger.warning(f"Using empty string for missing cookie: {name}")
+            logger.warning(f"Using empty string for cookie: {name}")
 
         # Set appropriate expiration date based on cookie type
         if name in ["personalization_id", "kdt"]:
             # 1 month expiration for these cookies
             expires = one_month_future
-            logger.info(f"Setting {name} cookie to expire in 1 month: {expires}")
+            logger.debug(f"Setting {name} cookie to expire in 1 month: {expires}")
         elif name in ["auth_token", "ct0"]:
             # 1 week expiration for these cookies
             expires = one_week_future
-            logger.info(f"Setting {name} cookie to expire in 1 week: {expires}")
+            logger.debug(f"Setting {name} cookie to expire in 1 week: {expires}")
         else:
             # Default 1 week for all other cookies
             expires = one_week_future
-            logger.info(
+            logger.debug(
                 f"Setting {name} cookie to default expiration (1 week): {expires}"
             )
 
@@ -1627,8 +1635,22 @@ def process_account_state_machine(driver, username, password, accindex):
     if login_successful:
         try:
             if "home" not in driver.current_url.lower():
-                driver.get("https://twitter.com/home")
-                time.sleep(3)
+                logger.info("Navigating to home page to ensure all cookies are set")
+                try:
+                    # Always navigate to x.com
+                    driver.get("https://x.com/home")
+                    time.sleep(3)
+                except WebDriverException as e:
+                    # Check if window was closed
+                    if (
+                        "no such window" in str(e).lower()
+                        or "no such session" in str(e).lower()
+                    ):
+                        logger.info(
+                            "Browser window was closed after login. Might be for VPN switching."
+                        )
+                        raise
+                    logger.warning(f"Failed to navigate to home page: {str(e)}")
 
             cookie_values, domain = extract_cookies(driver)
             cookies_json = generate_cookies_json(cookie_values, domain)
@@ -1638,9 +1660,20 @@ def process_account_state_machine(driver, username, password, accindex):
                 f.write(json.dumps(cookies_json, indent=2))
             logger.info(f"Saved cookies for {username} to {output_path}")
             return True
-
+        except WebDriverException as e:
+            # Check if window was closed
+            if (
+                "no such window" in str(e).lower()
+                or "no such session" in str(e).lower()
+            ):
+                logger.info(
+                    "Browser window was closed after login. Might be for VPN switching."
+                )
+                raise
+            logger.error(f"Error after successful login: {str(e)}")
+            return False
         except Exception as e:
-            logger.error(f"Error saving cookies for {username}: {e}")
+            logger.error(f"Error after successful login: {str(e)}")
             return False
 
     logger.error(f"Login failed for {username} within {WAITING_TIME}s.")

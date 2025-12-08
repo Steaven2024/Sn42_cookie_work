@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from selenium.webdriver.support.ui import WebDriverWait
 
 import pyautogui
-
+import subprocess
 # from vpn_manager import reconnect_vpn, disconnect_vpn, rotate_server_in_ovpn
 
 
@@ -44,7 +44,7 @@ IMAP_PORT = 993
 R_RAMB_HOST = "imap.rambler.ru"
 R_RAMB_PORT = 993
 
-TWITTER_LOGIN_URL = "https://twitter.com/i/flow/login"
+TWITTER_LOGIN_URL = "https://x.com/i/flow/login"
 
 # X/Twitter typical senders & subject hints
 SENDER_WHITELIST = {"noreply@twitter.com", "security@twitter.com", "info@x.com", "verify@x.com"}
@@ -1746,6 +1746,8 @@ def main():
                 if driver is not None:
                     try:
                         driver.quit()
+                        subprocess.run(["taskkill", "/F", "/IM", "chrome.exe", "/T"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
                     except:
                         pass
                 
@@ -1755,7 +1757,7 @@ def main():
                 )
                 # Process the current account
                 success = process_account_state_machine(driver, username, password, current_account_index)
-
+                # success = True
                 if success:
                     logger.info(f"Successfully processed account: {username}")
                 else:
@@ -1782,6 +1784,7 @@ def main():
                     try:
                         if driver:
                             driver.quit()
+                            subprocess.run(["taskkill", "/F", "/IM", "chrome.exe", "/T"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     except:
                         pass
 
@@ -1809,6 +1812,7 @@ def main():
                 try:
                     if driver:
                         driver.quit()
+                        subprocess.run(["taskkill", "/F", "/IM", "chrome.exe", "/T"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 except:
                     pass
 
@@ -1816,6 +1820,7 @@ def main():
         try:
             if driver:
                 driver.quit()
+                subprocess.run(["taskkill", "/F", "/IM", "chrome.exe", "/T"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except:
             pass
 

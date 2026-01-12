@@ -1687,6 +1687,8 @@ def process_account_state_machine(driver, username, password, accindex):
                 return "password"
             if driver.find_elements(By.CSS_SELECTOR, '[data-testid="tweetButtonInline"]'):
                 return "home"
+            if is_unlocked_in(driver):
+                return "unlocked"
             return "unknown"
         except Exception:
             return "unknown"

@@ -29,8 +29,8 @@ def process_lines(lines: List[str]):
         line = raw.strip()
         if not line:
             continue
-        #parts = [p.strip() for p in line.split("|")]
-        parts = [p.strip() for p in line.split(":")]
+        parts = [p.strip() for p in line.split("|")]
+        # parts = [p.strip() for p in line.split(":")]
         if len(parts) < 5:
             # tolerant: if fewer than 5 parts, consider it malformed but attempt to salvage
             malformed += 1

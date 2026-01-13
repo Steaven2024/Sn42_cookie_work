@@ -1580,11 +1580,76 @@ def try_fetch_and_apply_confirmation_code(driver, email_addr, accindex, password
 
     return True
 
+def execute_unlocked_substep(step_name, step_func, max_retries=3):
+    """
+    Execute a sub-step of the unlocked stage with retry logic.
+    
+    Args:
+        step_name: Name of the step for logging
+        step_func: Function that returns True on success, False on failure
+        max_retries: Maximum number of retry attempts (default: 3)
+    
+    Returns:
+        True if step succeeded, False if failed after all retries
+    """
+    for attempt in range(1, max_retries + 1):
+        logger.info(f"[UNLOCKED][{step_name}] Attempt {attempt}/{max_retries}")
+        try:
+            result = step_func()
+            if result:
+                logger.info(f"[UNLOCKED][{step_name}] Step completed successfully.")
+                return True
+            else:
+                logger.warning(f"[UNLOCKED][{step_name}] Step failed on attempt {attempt}/{max_retries}")
+                if attempt < max_retries:
+                    rand_sleep(2.0, 3.0)  # Wait before retry
+        except Exception as e:
+            logger.warning(f"[UNLOCKED][{step_name}] Exception on attempt {attempt}/{max_retries}: {e}")
+            if attempt < max_retries:
+                rand_sleep(2.0, 3.0)  # Wait before retry
+    
+    logger.error(f"[UNLOCKED][{step_name}] Step failed after {max_retries} attempts. Returning login failure.")
+    return False
+
 def find_button_by_text(driver, text_patterns, timeout=5):
-    """Find a button by text patterns. Returns the button element or None."""
+    """Find a button by text patterns. Waits up to timeout seconds for button to appear. Returns the button element or None."""
     if isinstance(text_patterns, str):
         text_patterns = [text_patterns]
     
+    wait = WebDriverWait(driver, timeout)
+    
+    # Try each pattern sequentially, waiting for each one
+    for pattern in text_patterns:
+        try:
+            # Wait for button with text content (case-insensitive)
+            try:
+                button = wait.until(
+                    EC.element_to_be_clickable((
+                        By.XPATH,
+                        f'//*[(contains(text(), "{pattern}") or contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "{pattern.lower()}")) and (@role="button" or self::button)]'
+                    ))
+                )
+                if button and button.is_displayed():
+                    return button
+            except Exception:
+                pass
+            
+            # Also try by role="button" with aria-label
+            try:
+                button = wait.until(
+                    EC.element_to_be_clickable((
+                        By.XPATH,
+                        f'//*[@role="button" and (contains(@aria-label, "{pattern}") or contains(translate(@aria-label, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "{pattern.lower()}"))]'
+                    ))
+                )
+                if button and button.is_displayed():
+                    return button
+            except Exception:
+                pass
+        except Exception:
+            continue
+    
+    # Fallback: quick check without waiting (for cases where timeout already expired)
     for pattern in text_patterns:
         try:
             buttons = driver.find_elements(
@@ -1599,7 +1664,7 @@ def find_button_by_text(driver, text_patterns, timeout=5):
         except Exception:
             continue
     
-    # Also try by role="button" with aria-label
+    # Also try by role="button" with aria-label (fallback)
     for pattern in text_patterns:
         try:
             buttons = driver.find_elements(
@@ -1677,6 +1742,7 @@ def process_account_state_machine(driver, username, password, accindex):
     last_action_time = start_time
     login_successful = False
     stage = "username"
+    unlocked_substep = 1  # Track which sub-step of unlocked stage we're on
 
     def get_stage():
         """Identify which step of the login flow we’re currently in."""
@@ -1791,7 +1857,7 @@ def process_account_state_machine(driver, username, password, accindex):
                     elif is_unlocked_in(driver):
                         logger.info("Unlocked screen detected.")
                         stage = "unlocked"
-                        last_action_time = time.time()
+                        # last_action_time = time.time()
                         # Don't break - let the unlocked stage handling run in the next iteration
                     else:
                         try:
@@ -1822,32 +1888,62 @@ def process_account_state_machine(driver, username, password, accindex):
                 
             # --- 6️⃣ Unlocked stage ---
             elif stage == "unlocked":
-                logger.info("[UNLOCKED] Processing unlocked account flow.")
+                logger.info(f"[UNLOCKED] Processing unlocked account flow with sub-steps. Current substep: {unlocked_substep}")
                 
-                # Step 1: Find and click the start button if it exists
-                start_button = find_button_by_text(driver, ["start", "Start", "begin", "Begin"], timeout=5)
-                if start_button:
-                    logger.info("[UNLOCKED] Found start button, clicking it.")
-                    click_element_via_pyautogui_btn(driver, start_button)
-                    rand_sleep(1.0, 2.0)
-                    last_action_time = time.time()
+                current_substep = unlocked_substep
                 
-                # Step 2: Wait a bit and check for send email button
-                time.sleep(2)
-                send_email_button = find_button_by_text(driver, ["send email", "Send email", "send verification email", "Send verification email", "email"], timeout=5)
-                if send_email_button:
-                    logger.info("[UNLOCKED] Found send email button, clicking it.")
-                    click_element_via_pyautogui_btn(driver, send_email_button)
-                    rand_sleep(2.0, 3.0)
-                    last_action_time = time.time()
+                # Step 1: Find and click the start button
+                if current_substep == 1:
+                    def step1_click_start():
+                        start_button = find_button_by_text(driver, ["start", "Start", "begin", "Begin"], timeout=10)
+                        if start_button:
+                            logger.info("[UNLOCKED][Step1] Found start button, clicking it.")
+                            click_element_via_pyautogui_btn(driver, start_button)
+                            rand_sleep(1.0, 2.0)
+                            last_action_time = time.time()
+                            return True
+                        return False
+                    
+                    if execute_unlocked_substep("Step1_ClickStart", step1_click_start):
+                        unlocked_substep = 2
+                        last_action_time = time.time()
+                    else:
+                        logger.error("[UNLOCKED] Step 1 failed after retries. Login failed.")
+                        login_successful = False
+                        break
                 
-                # Step 3: Wait for token input box and fill it with code from IMAP
-                time.sleep(3)
-                token_input = find_token_input(driver, timeout=15)
-                if token_input:
-                    logger.info("[UNLOCKED] Found token input box, fetching code from IMAP.")
-                    # Get code from IMAP service
-                    try:
+                # Step 2: Find and click send email button
+                elif current_substep == 2:
+                    def step2_click_send_email():
+                        time.sleep(2)
+                        send_email_button = find_button_by_text(driver, ["send email", "Send email", "send verification email", "Send verification email", "email"], timeout=10)
+                        if send_email_button:
+                            logger.info("[UNLOCKED][Step2] Found send email button, clicking it.")
+                            click_element_via_pyautogui_btn(driver, send_email_button)
+                            rand_sleep(2.0, 3.0)
+                            last_action_time = time.time()
+                            return True
+                        return False
+                    
+                    if execute_unlocked_substep("Step2_ClickSendEmail", step2_click_send_email):
+                        unlocked_substep = 3
+                        last_action_time = time.time()
+                    else:
+                        logger.error("[UNLOCKED] Step 2 failed after retries. Login failed.")
+                        login_successful = False
+                        break
+                
+                # Step 3: Find token input, get code from IMAP, fill it, and click verify
+                elif current_substep == 3:
+                    def step3_fill_token_and_verify():
+                        time.sleep(3)
+                        token_input = find_token_input(driver, timeout=15)
+                        if not token_input:
+                            logger.warning("[UNLOCKED][Step3] Token input box not found.")
+                            return False
+                        
+                        logger.info("[UNLOCKED][Step3] Found token input box, fetching code from IMAP.")
+                        # Get code from IMAP service
                         code = None
                         domain = (email.split("@")[-1] or "").lower()
                         _, email_pwd = get_email_and_password_for_index(accindex, password)
@@ -1859,7 +1955,7 @@ def process_account_state_machine(driver, username, password, accindex):
                             try:
                                 code = fetch_latest_x_code(email, email_pwd, timeout_sec=TOTAL_TIMEOUT_SEC, poll_interval=POLL_INTERVAL_SEC)
                             except Exception as e:
-                                logger.warning(f"[UNLOCKED][GMX] Error fetching code: {e}")
+                                logger.warning(f"[UNLOCKED][Step3][GMX] Error fetching code: {e}")
                         
                         # Try Rambler
                         if (not code) and ("rambler" in domain or domain.endswith("rambler.ru")):
@@ -1868,58 +1964,84 @@ def process_account_state_machine(driver, username, password, accindex):
                                     email_pwd = extract_gmx_password(accindex)
                                 code = fetch_latest_x_code_rambler(email, email_pwd, timeout_sec=TOTAL_TIMEOUT_SEC, poll_interval=POLL_INTERVAL_SEC)
                             except Exception as e:
-                                logger.warning(f"[UNLOCKED][RAMBLER] Error fetching code: {e}")
+                                logger.warning(f"[UNLOCKED][Step3][RAMBLER] Error fetching code: {e}")
                         
-                        if code:
-                            logger.info(f"[UNLOCKED] Retrieved code: {code} — typing into token input.")
-                            # Fill the token input
-                            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", token_input)
-                            rand_sleep(0.5, 0.8)
-                            click_element_via_pyautogui(driver, token_input)
-                            rand_sleep(0.22, 0.4)
-                            type_via_pyautogui(code)
-                            rand_sleep(1.0, 1.5)
-                            
-                            # Find and click verify button
-                            verify_button = find_verify_button(driver, timeout=5)
-                            if verify_button:
-                                logger.info("[UNLOCKED] Found verify button, clicking it.")
-                                click_element_via_pyautogui_btn(driver, verify_button)
-                                rand_sleep(2.0, 3.0)
-                                last_action_time = time.time()
-                            else:
-                                # Fallback: try clicking next button
-                                logger.info("[UNLOCKED] Verify button not found, trying next button.")
-                                click_next_button(driver)
-                                rand_sleep(2.0, 3.0)
-                                last_action_time = time.time()
+                        if not code:
+                            logger.warning("[UNLOCKED][Step3] Could not fetch code from IMAP.")
+                            return False
+                        
+                        logger.info(f"[UNLOCKED][Step3] Retrieved code: {code} — typing into token input.")
+                        # Fill the token input
+                        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", token_input)
+                        rand_sleep(0.5, 0.8)
+                        click_element_via_pyautogui(driver, token_input)
+                        rand_sleep(0.22, 0.4)
+                        type_via_pyautogui(code)
+                        rand_sleep(1.0, 1.5)
+                        
+                        # Find and click verify button
+                        verify_button = find_verify_button(driver, timeout=5)
+                        if verify_button:
+                            logger.info("[UNLOCKED][Step3] Found verify button, clicking it.")
+                            click_element_via_pyautogui_btn(driver, verify_button)
+                            rand_sleep(2.0, 3.0)
+                            last_action_time = time.time()
+                            return True
                         else:
-                            logger.warning("[UNLOCKED] Could not fetch code from IMAP.")
-                    except Exception as e:
-                        logger.warning(f"[UNLOCKED] Error while fetching/applying code: {e}")
-                else:
-                    logger.info("[UNLOCKED] Token input box not found yet.")
+                            # Fallback: try clicking next button
+                            logger.info("[UNLOCKED][Step3] Verify button not found, trying next button.")
+                            click_next_button(driver)
+                            rand_sleep(2.0, 3.0)
+                            last_action_time = time.time()
+                            return True
+                    
+                    if execute_unlocked_substep("Step3_FillTokenAndVerify", step3_fill_token_and_verify):
+                        unlocked_substep = 4
+                        last_action_time = time.time()
+                    else:
+                        logger.error("[UNLOCKED] Step 3 failed after retries. Login failed.")
+                        login_successful = False
+                        break
                 
-                # Step 4: Check for "continue to X" button
-                time.sleep(2)
-                continue_to_x_button = find_button_by_text(driver, ["continue to X", "Continue to X", "continue to x", "Continue to x", "continue"], timeout=5)
-                if continue_to_x_button:
-                    logger.info("[UNLOCKED] Found continue to X button, clicking it.")
-                    click_element_via_pyautogui_btn(driver, continue_to_x_button)
-                    rand_sleep(2.0, 3.0)
-                    last_action_time = time.time()
+                # Step 4: Find and click continue to X button
+                elif current_substep == 4:
+                    def step4_click_continue_to_x():
+                        time.sleep(2)
+                        continue_to_x_button = find_button_by_text(driver, ["continue to X", "Continue to X", "continue to x", "Continue to x", "continue"], timeout=10)
+                        if continue_to_x_button:
+                            logger.info("[UNLOCKED][Step4] Found continue to X button, clicking it.")
+                            click_element_via_pyautogui_btn(driver, continue_to_x_button)
+                            rand_sleep(2.0, 3.0)
+                            last_action_time = time.time()
+                            return True
+                        return False
+                    
+                    if execute_unlocked_substep("Step4_ClickContinueToX", step4_click_continue_to_x):
+                        unlocked_substep = 5
+                        last_action_time = time.time()
+                    else:
+                        logger.error("[UNLOCKED] Step 4 failed after retries. Login failed.")
+                        login_successful = False
+                        break
                 
                 # Step 5: Check if URL changed to "x.com/home" (success indicator)
-                time.sleep(2)
-                current_url = driver.current_url.lower()
-                if "x.com/home" in current_url or "twitter.com/home" in current_url:
-                    logger.info("[UNLOCKED] Success! URL changed to home page.")
-                    stage = "home"
-                    login_successful = True
-                    break
+                elif current_substep == 5:
+                    time.sleep(2)
+                    current_url = driver.current_url.lower()
+                    if "x.com/home" in current_url or "twitter.com/home" in current_url:
+                        logger.info("[UNLOCKED][Step5] Success! URL changed to home page.")
+                        stage = "home"
+                        login_successful = True
+                        unlocked_substep = 1  # Reset for next account
+                        break
+                    else:
+                        logger.info(f"[UNLOCKED][Step5] URL is still: {driver.current_url}, waiting...")
+                        last_action_time = time.time()
+                        # Continue checking in next iteration
+                
                 else:
-                    logger.info(f"[UNLOCKED] URL is still: {driver.current_url}, waiting...")
-                    # Don't break, continue the loop to check again
+                    logger.warning(f"[UNLOCKED] Unknown substep: {current_substep}, resetting to step 1")
+                    unlocked_substep = 1
                     last_action_time = time.time()
             time.sleep(POLLING_INTERVAL)
 

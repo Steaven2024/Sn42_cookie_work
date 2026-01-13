@@ -378,6 +378,7 @@ def extract_code_from_email_body(html_text: str, plain_text: str) -> str | None:
                         context_end = min(len(html_text), code_pos + 200)
                         context = html_text[context_start:context_end].lower()
                         
+                        
                         # Prefer codes near trigger words
                         if any(trigger in context for trigger in ["verification", "confirm", "code", "enter"]):
                             # Verify it's not a date

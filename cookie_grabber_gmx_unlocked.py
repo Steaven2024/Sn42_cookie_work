@@ -1622,7 +1622,21 @@ def find_button_by_text(driver, text_patterns, timeout=5):
     # Try each pattern sequentially, waiting for each one
     for pattern in text_patterns:
         try:
-            # Wait for button with text content (case-insensitive)
+            # Strategy 1: Button with text content (including child elements) - most flexible
+            try:
+                button = wait.until(
+                    EC.element_to_be_clickable((
+                        By.XPATH,
+                        f'//*[(@role="button" or self::button or self::div[@role="button"] or self::span[@role="button"] or self::a[@role="button"]) and (contains(., "{pattern}") or contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "{pattern.lower()}"))]'
+                    ))
+                )
+                if button and button.is_displayed():
+                    logger.debug(f"[BUTTON] Found button with pattern '{pattern}' using strategy 1 (text content)")
+                    return button
+            except Exception:
+                pass
+            
+            # Strategy 2: Button with explicit text() match
             try:
                 button = wait.until(
                     EC.element_to_be_clickable((
@@ -1631,11 +1645,12 @@ def find_button_by_text(driver, text_patterns, timeout=5):
                     ))
                 )
                 if button and button.is_displayed():
+                    logger.debug(f"[BUTTON] Found button with pattern '{pattern}' using strategy 2 (text())")
                     return button
             except Exception:
                 pass
             
-            # Also try by role="button" with aria-label
+            # Strategy 3: Button with aria-label
             try:
                 button = wait.until(
                     EC.element_to_be_clickable((
@@ -1644,42 +1659,70 @@ def find_button_by_text(driver, text_patterns, timeout=5):
                     ))
                 )
                 if button and button.is_displayed():
+                    logger.debug(f"[BUTTON] Found button with pattern '{pattern}' using strategy 3 (aria-label)")
+                    return button
+            except Exception:
+                pass
+            
+            # Strategy 4: Input elements with type="submit" or type="button" and value attribute
+            try:
+                button = wait.until(
+                    EC.element_to_be_clickable((
+                        By.XPATH,
+                        f'//input[@type="submit" or @type="button"][contains(translate(@value, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "{pattern.lower()}")]'
+                    ))
+                )
+                if button and button.is_displayed():
+                    logger.debug(f"[BUTTON] Found button with pattern '{pattern}' using strategy 4 (input value)")
+                    return button
+            except Exception:
+                pass
+            
+            # Strategy 5: Any clickable element containing the text
+            try:
+                button = wait.until(
+                    EC.element_to_be_clickable((
+                        By.XPATH,
+                        f'//*[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "{pattern.lower()}") and (@onclick or @role="button" or self::button or self::a)]'
+                    ))
+                )
+                if button and button.is_displayed():
+                    logger.debug(f"[BUTTON] Found button with pattern '{pattern}' using strategy 5 (any clickable)")
                     return button
             except Exception:
                 pass
         except Exception:
             continue
     
-    # Fallback: quick check without waiting (for cases where timeout already expired)
-    for pattern in text_patterns:
-        try:
-            buttons = driver.find_elements(
-                By.XPATH, f'//*[contains(text(), "{pattern}") or contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "{pattern.lower()}")]'
-            )
-            for button in buttons:
-                try:
-                    if button.is_displayed():
-                        return button
-                except Exception:
-                    continue
-        except Exception:
-            continue
+    # Fallback: Find all buttons and check their text content/value (for debugging and last resort)
+    try:
+        # Include input elements with type="submit" or type="button"
+        all_buttons = driver.find_elements(By.XPATH, '//*[@role="button" or self::button or self::a[@role="button"] or self::input[@type="submit"] or self::input[@type="button"]]')
+        logger.debug(f"[BUTTON] Found {len(all_buttons)} total buttons on page")
+        for btn in all_buttons:
+            try:
+                if btn.is_displayed():
+                    # Get text content
+                    btn_text = btn.text.strip().lower()
+                    # Get value attribute (for input elements)
+                    btn_value = btn.get_attribute("value") or ""
+                    btn_value_lower = btn_value.lower()
+                    # Get aria-label
+                    btn_aria = btn.get_attribute("aria-label") or ""
+                    btn_aria_lower = btn_aria.lower()
+                    
+                    # Check if any pattern matches in text, value, or aria-label
+                    for pattern in text_patterns:
+                        pattern_lower = pattern.lower()
+                        if pattern_lower in btn_text or pattern_lower in btn_value_lower or pattern_lower in btn_aria_lower:
+                            logger.debug(f"[BUTTON] Found matching button in fallback: text='{btn_text[:50]}', value='{btn_value[:50]}', aria-label='{btn_aria[:50]}'")
+                            return btn
+            except Exception:
+                continue
+    except Exception as e:
+        logger.debug(f"[BUTTON] Error in fallback search: {e}")
     
-    # Also try by role="button" with aria-label (fallback)
-    for pattern in text_patterns:
-        try:
-            buttons = driver.find_elements(
-                By.XPATH, f'//*[@role="button" and (contains(@aria-label, "{pattern}") or contains(translate(@aria-label, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "{pattern.lower()}"))]'
-            )
-            for button in buttons:
-                try:
-                    if button.is_displayed():
-                        return button
-                except Exception:
-                    continue
-        except Exception:
-            continue
-    
+    logger.warning(f"[BUTTON] Could not find button with patterns: {text_patterns}")
     return None
 
 def find_token_input(driver, timeout=10):
@@ -1896,13 +1939,54 @@ def process_account_state_machine(driver, username, password, accindex):
                 # Step 1: Find and click the start button
                 if current_substep == 1:
                     def step1_click_start():
-                        start_button = find_button_by_text(driver, ["start", "Start", "begin", "Begin"], timeout=10)
+                        # Try multiple variations of start button text
+                        start_button = find_button_by_text(driver, [
+                            "start", "Start", "begin", "Begin",
+                            "get started", "Get Started", "Get started",
+                            "start now", "Start Now", "Start now",
+                            "begin now", "Begin Now", "Begin now",
+                            "let's start", "Let's start", "Let's Start"
+                        ], timeout=10)
                         if start_button:
                             logger.info("[UNLOCKED][Step1] Found start button, clicking it.")
                             click_element_via_pyautogui_btn(driver, start_button)
                             rand_sleep(1.0, 2.0)
                             last_action_time = time.time()
                             return True
+                        
+                        # Debug: If not found, log all visible buttons to help diagnose
+                        logger.warning("[UNLOCKED][Step1] Start button not found. Listing all visible buttons for debugging...")
+                        try:
+                            all_buttons = driver.find_elements(By.XPATH, '//*[@role="button" or self::button or self::a[@role="button"] or self::div[@role="button"] or self::span[@role="button"] or self::input[@type="submit"] or self::input[@type="button"]]')
+                            visible_buttons = []
+                            for btn in all_buttons:
+                                try:
+                                    if btn.is_displayed():
+                                        btn_text = btn.text.strip()
+                                        btn_value = btn.get_attribute("value") or ""
+                                        btn_aria = btn.get_attribute("aria-label") or ""
+                                        btn_tag = btn.tag_name
+                                        btn_type = btn.get_attribute("type") or ""
+                                        btn_info = f"[{btn_tag}"
+                                        if btn_type:
+                                            btn_info += f" type='{btn_type}'"
+                                        btn_info += "]"
+                                        if btn_value:
+                                            btn_info += f" value='{btn_value[:50]}'"
+                                        if btn_text:
+                                            btn_info += f" text='{btn_text[:50]}'"
+                                        if btn_aria:
+                                            btn_info += f" aria-label='{btn_aria[:50]}'"
+                                        visible_buttons.append(btn_info)
+                                except Exception:
+                                    continue
+                            if visible_buttons:
+                                logger.info(f"[UNLOCKED][Step1] Found {len(visible_buttons)} visible buttons: {visible_buttons[:15]}")
+                            else:
+                                logger.warning("[UNLOCKED][Step1] No visible buttons found on page.")
+                        except Exception as e:
+                            logger.debug(f"[UNLOCKED][Step1] Error logging buttons: {e}")
+                        
                         return False
                     
                     if execute_unlocked_substep("Step1_ClickStart", step1_click_start):

@@ -97,6 +97,120 @@ def is_anti_bot_triggered(driver):
     except Exception:
         return False
 
+def check_and_handle_cloudflare(driver, stage_name="", max_wait=30):
+    """
+    Check for Cloudflare protection and handle it automatically.
+    Returns True if Cloudflare is cleared or not present, False if it persists.
+    """
+    try:
+        # Check for Cloudflare indicators
+        title = driver.title.lower()
+        url = driver.current_url.lower()
+        page_source = driver.page_source.lower()
+        body_text = ""
+        try:
+            body_text = driver.execute_script("return document.body ? document.body.innerText : ''") or ""
+        except Exception:
+            pass
+        
+        cf_indicators = [
+            "just a moment", "checking your browser", "please enable javascript",
+            "cloudflare", "verify you are human", "verify you're human",
+            "ddos protection", "ray id"
+        ]
+        
+        has_cf = False
+        for indicator in cf_indicators:
+            if (indicator in title or indicator in url or 
+                indicator in page_source.lower() or indicator in body_text.lower()):
+                has_cf = True
+                break
+        
+        # Check for Cloudflare iframes
+        try:
+            iframes = driver.find_elements(By.TAG_NAME, "iframe")
+            for ifr in iframes:
+                src = (ifr.get_attribute("src") or "").lower()
+                if "cloudflare" in src or "challenges.cloudflare.com" in src:
+                    has_cf = True
+                    break
+        except Exception:
+            pass
+        
+        if not has_cf:
+            return True  # No Cloudflare detected
+        
+        logger.warning(f"[CLOUDFLARE] Cloudflare protection detected at stage: {stage_name}")
+        
+        # Try to wait for Cloudflare to auto-clear
+        start_time = time.time()
+        while time.time() - start_time < max_wait:
+            try:
+                # Check if Cloudflare cleared
+                current_url = driver.current_url.lower()
+                current_title = driver.title.lower()
+                
+                # If URL changed away from challenge page, it might be cleared
+                if "challenge" not in current_url and "just a moment" not in current_title:
+                    try:
+                        body_text = driver.execute_script("return document.body ? document.body.innerText : ''") or ""
+                        if not any(ind in body_text.lower() for ind in ["just a moment", "checking your browser", "verify you are human"]):
+                            logger.info(f"[CLOUDFLARE] Cloudflare appears to have cleared at stage: {stage_name}")
+                            rand_sleep(1.0, 2.0)  # Wait a bit more to ensure page is loaded
+                            return True
+                    except Exception:
+                        pass
+                
+                # Try to find and click the Cloudflare checkbox if present
+                try:
+                    # Look for Cloudflare challenge checkbox
+                    checkbox = driver.find_element(By.CSS_SELECTOR, 'input[type="checkbox"][name="cf_captcha_kind"]')
+                    if checkbox and checkbox.is_displayed():
+                        logger.info("[CLOUDFLARE] Found Cloudflare checkbox, attempting to click...")
+                        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
+                        rand_sleep(0.5, 1.0)
+                        checkbox.click()
+                        rand_sleep(2.0, 3.0)
+                except Exception:
+                    pass
+                
+                # Try to find and click the "Verify" or "Continue" button
+                try:
+                    verify_buttons = driver.find_elements(By.XPATH, 
+                        '//*[contains(text(), "Verify") or contains(text(), "Continue") or contains(@aria-label, "Verify")]'
+                    )
+                    for btn in verify_buttons:
+                        if btn.is_displayed():
+                            logger.info("[CLOUDFLARE] Found verify button, clicking...")
+                            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
+                            rand_sleep(0.5, 1.0)
+                            btn.click()
+                            rand_sleep(2.0, 3.0)
+                            break
+                except Exception:
+                    pass
+                
+                time.sleep(1)
+            except Exception as e:
+                logger.debug(f"[CLOUDFLARE] Error during check: {e}")
+                time.sleep(1)
+        
+        # Final check
+        try:
+            body_text = driver.execute_script("return document.body ? document.body.innerText : ''") or ""
+            if not any(ind in body_text.lower() for ind in ["just a moment", "checking your browser", "verify you are human"]):
+                logger.info(f"[CLOUDFLARE] Cloudflare cleared after waiting at stage: {stage_name}")
+                return True
+        except Exception:
+            pass
+        
+        logger.warning(f"[CLOUDFLARE] Cloudflare protection still present at stage: {stage_name} after {max_wait}s wait")
+        return False
+        
+    except Exception as e:
+        logger.warning(f"[CLOUDFLARE] Error checking Cloudflare: {e}")
+        return True  # Assume OK if we can't check
+
 def start_driver_with_proxy(proxy=None, use_uc=True):
     """
     Start a new undetected-chrome driver with a fresh profile and optional proxy.
@@ -825,6 +939,24 @@ def setup_driver():
     options.add_argument("--disable-features=IsolateOrigins,site-per-process")
     options.add_argument("--disable-web-security")
     options.add_argument("--allow-running-insecure-content")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--exclude-switches=enable-automation")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--no-first-run")
+    options.add_argument("--no-default-browser-check")
+    options.add_argument("--disable-infobars")
+    options.add_argument("--disable-popup-blocking")
+    options.add_argument("--disable-translate")
+    options.add_argument("--disable-background-timer-throttling")
+    options.add_argument("--disable-backgrounding-occluded-windows")
+    options.add_argument("--disable-renderer-backgrounding")
+    options.add_argument("--disable-features=TranslateUI")
+    options.add_argument("--disable-ipc-flooding-protection")
+    
+    # Add experimental options to bypass Cloudflare
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
+    options.add_experimental_option("excludeSwitches", ["enable-logging"])
 
     # Add a random viewport size
     width = random.randint(1050, 1200)
@@ -876,10 +1008,55 @@ def setup_driver():
         driver = webdriver.Chrome(options=options)
         logger.info("Successfully initialized Chrome driver")
 
-        # Additional anti-detection measures
-        driver.execute_script(
-            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-        )
+        # Additional anti-detection measures - execute before any page loads
+        anti_detection_script = """
+        // Remove webdriver property
+        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+        
+        // Override Chrome runtime
+        if (!window.chrome) {
+            window.chrome = { runtime: {} };
+        }
+        
+        // Override permissions
+        const originalQuery = window.navigator.permissions.query;
+        window.navigator.permissions.query = (parameters) => (
+            parameters.name === 'notifications' ?
+                Promise.resolve({ state: Notification.permission }) :
+                originalQuery(parameters)
+        );
+        
+        // Override plugins
+        Object.defineProperty(navigator, 'plugins', {
+            get: () => [1, 2, 3, 4, 5]
+        });
+        
+        // Override languages
+        Object.defineProperty(navigator, 'languages', {
+            get: () => ['en-US', 'en']
+        });
+        
+        // Override platform
+        Object.defineProperty(navigator, 'platform', {
+            get: () => 'Win32'
+        });
+        
+        // Override connection
+        if (navigator.connection) {
+            Object.defineProperty(navigator.connection, 'rtt', {get: () => 50});
+        }
+        
+        // Remove automation indicators
+        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
+        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
+        """
+        
+        driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+            'source': anti_detection_script
+        })
+        
+        driver.execute_script(anti_detection_script)
 
         # Apply more comprehensive stealth settings
         stealth(
@@ -1774,12 +1951,30 @@ def process_account_state_machine(driver, username, password, accindex):
     # Go to login page
     try:
         driver.get(TWITTER_LOGIN_URL)
+        
+        # Wait a bit for page to load
+        rand_sleep(2.0, 3.0)
+        
+        # Check for Cloudflare immediately after page load
+        if not check_and_handle_cloudflare(driver, stage_name="initial_load", max_wait=30):
+            logger.error("[CLOUDFLARE] Cloudflare protection detected on initial page load and could not be bypassed.")
+            return False
+        
         WebDriverWait(driver, 15).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, 'input[name="text"]'))
         )
         logger.info("Twitter login page loaded.")
+        
+        # Additional Cloudflare check after page fully loads
+        rand_sleep(1.0, 2.0)
+        if not check_and_handle_cloudflare(driver, stage_name="after_login_load", max_wait=15):
+            logger.warning("[CLOUDFLARE] Cloudflare detected after login page load, but continuing...")
+            
     except Exception as e:
         logger.error(f"Failed to open Twitter login page: {e}")
+        # Check if it's a Cloudflare issue
+        if not check_and_handle_cloudflare(driver, stage_name="error_recovery", max_wait=10):
+            return False
         return False
 
     start_time = time.time()
@@ -1824,6 +2019,13 @@ def process_account_state_machine(driver, username, password, accindex):
                 logger.info(f"Stage changed: {stage} → {new_stage}")
                 stage = new_stage
                 last_action_time = time.time()
+
+            # Check for Cloudflare protection at the start of each iteration
+            if not check_and_handle_cloudflare(driver, stage_name=stage, max_wait=15):
+                logger.warning(f"[CLOUDFLARE] Cloudflare detected at {stage} stage, waiting longer...")
+                time.sleep(3)
+                last_action_time = time.time()
+                continue
 
             # --- 1️⃣ Username step ---
             if stage == "username":
@@ -1934,6 +2136,13 @@ def process_account_state_machine(driver, username, password, accindex):
             elif stage == "unlocked":
                 logger.info(f"[UNLOCKED] Processing unlocked account flow with sub-steps. Current substep: {unlocked_substep}")
                 
+                # Check for Cloudflare before processing unlocked stage
+                if not check_and_handle_cloudflare(driver, stage_name="unlocked", max_wait=15):
+                    logger.warning("[CLOUDFLARE] Cloudflare detected in unlocked stage, waiting...")
+                    time.sleep(3)
+                    last_action_time = time.time()
+                    continue
+                
                 current_substep = unlocked_substep
                 
                 # Step 1: Find and click the start button
@@ -2005,7 +2214,7 @@ def process_account_state_machine(driver, username, password, accindex):
                         if send_email_button:
                             logger.info("[UNLOCKED][Step2] Found send email button, clicking it.")
                             click_element_via_pyautogui_btn(driver, send_email_button)
-                            rand_sleep(2.0, 3.0)
+                            rand_sleep(1.0, 2.0)
                             last_action_time = time.time()
                             return True
                         return False
@@ -2021,7 +2230,7 @@ def process_account_state_machine(driver, username, password, accindex):
                 # Step 3: Find token input, get code from IMAP, fill it, and click verify
                 elif current_substep == 3:
                     def step3_fill_token_and_verify():
-                        time.sleep(3)
+                        time.sleep(2)
                         token_input = find_token_input(driver, timeout=15)
                         if not token_input:
                             logger.warning("[UNLOCKED][Step3] Token input box not found.")
@@ -2069,14 +2278,14 @@ def process_account_state_machine(driver, username, password, accindex):
                         if verify_button:
                             logger.info("[UNLOCKED][Step3] Found verify button, clicking it.")
                             click_element_via_pyautogui_btn(driver, verify_button)
-                            rand_sleep(2.0, 3.0)
+                            rand_sleep(1.0, 2.0)
                             last_action_time = time.time()
                             return True
                         else:
                             # Fallback: try clicking next button
                             logger.info("[UNLOCKED][Step3] Verify button not found, trying next button.")
                             click_next_button(driver)
-                            rand_sleep(2.0, 3.0)
+                            rand_sleep(1.0, 2.0)
                             last_action_time = time.time()
                             return True
                     
@@ -2096,7 +2305,7 @@ def process_account_state_machine(driver, username, password, accindex):
                         if continue_to_x_button:
                             logger.info("[UNLOCKED][Step4] Found continue to X button, clicking it.")
                             click_element_via_pyautogui_btn(driver, continue_to_x_button)
-                            rand_sleep(2.0, 3.0)
+                            rand_sleep(1.0, 2.0)
                             last_action_time = time.time()
                             return True
                         return False

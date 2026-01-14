@@ -158,7 +158,7 @@ def check_and_handle_cloudflare(driver, stage_name="", max_wait=30):
                             checkbox = driver.find_element(By.CSS_SELECTOR, 'input[type="checkbox"]')
                             if checkbox and checkbox.is_displayed():
                                 logger.info("[CLOUDFLARE] Found checkbox in iframe, clicking...")
-                                # Scroll to checkbox                                
+                                # Scroll to checkbox
                                 driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'center'});", checkbox)
                                 rand_sleep(0.5, 1.0)
                                 # Use pyautogui for more human-like click
@@ -224,12 +224,18 @@ def check_and_handle_cloudflare(driver, stage_name="", max_wait=30):
                         for elem in elements:
                             if elem.is_displayed():
                                 logger.info("[CLOUDFLARE] Found 'Verify you are human' text, clicking on it...")
-                                click_element_via_pyautogui(driver, elem)
+                                driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'center'});", elem)
+                                rand_sleep(0.5, 1.0)
+                                x, y = element_center_on_screen(driver, elem)
+                                pyautogui.moveTo(x-100, y-50, duration=random.uniform(0.3, 0.6))
+                                rand_sleep(0.2, 0.4)
+                                pyautogui.click()
                                 cf_clicked = True
                                 logger.info("[CLOUDFLARE] Clicked on 'Verify you are human' text")
+                                rand_sleep(2.0, 3.0)
                                 break
                         if cf_clicked:
-                            return True
+                            return
                             # break
                     except Exception:
                         continue
@@ -239,7 +245,7 @@ def check_and_handle_cloudflare(driver, stage_name="", max_wait=30):
         # If checkbox was clicked, wait a bit for Cloudflare to process
         if cf_clicked:
             logger.info("[CLOUDFLARE] Waiting for Cloudflare to process the verification...")
-            # rand_sleep(3.0, 5.0)  # Give Cloudflare time to process
+            rand_sleep(3.0, 5.0)  # Give Cloudflare time to process
         
         # Try to wait for Cloudflare to auto-clear after clicking
         start_time = time.time()

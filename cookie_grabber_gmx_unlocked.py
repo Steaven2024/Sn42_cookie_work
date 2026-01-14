@@ -227,7 +227,7 @@ def check_and_handle_cloudflare(driver, stage_name="", max_wait=30):
                                 driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'center'});", elem)
                                 rand_sleep(0.5, 1.0)
                                 x, y = element_center_on_screen(driver, elem)
-                                pyautogui.moveTo(x-100, y-50, duration=random.uniform(0.3, 0.6))
+                                pyautogui.moveTo(x/2, y, duration=random.uniform(0.3, 0.6))
                                 rand_sleep(0.2, 0.4)
                                 pyautogui.click()
                                 cf_clicked = True
@@ -235,7 +235,7 @@ def check_and_handle_cloudflare(driver, stage_name="", max_wait=30):
                                 rand_sleep(2.0, 3.0)
                                 break
                         if cf_clicked:
-                            return
+                            return True
                             # break
                     except Exception:
                         continue

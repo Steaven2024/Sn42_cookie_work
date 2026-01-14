@@ -228,7 +228,7 @@ def check_and_handle_cloudflare(driver, stage_name="", max_wait=30):
                                 rand_sleep(0.5, 1.0)
                                 x, y = element_center_on_screen(driver, elem)
                                 print(f"[INFO] Moving to ({x},{y}) and clicking (pyautogui)")
-                                pyautogui.moveTo(x/2 + 20, y+10, duration=random.uniform(0.3, 0.6))
+                                pyautogui.moveTo(x/2 + 50, y+30, duration=random.uniform(0.3, 0.6))
                                 rand_sleep(0.2, 0.4)
                                 pyautogui.click()
                                 cf_clicked = True

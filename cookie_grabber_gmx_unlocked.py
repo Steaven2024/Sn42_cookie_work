@@ -153,34 +153,24 @@ def check_and_handle_cloudflare(driver, stage_name="", max_wait=30):
                     logger.info("[CLOUDFLARE] Found Cloudflare challenge iframe, switching to it...")
                     try:
                         driver.switch_to.frame(iframe)
-                        # Look for checkbox inside iframe
-                        checkbox_selectors = [
-                            'input[type="checkbox"]',
-                            'input[id*="challenge"]',
-                            'input[name*="challenge"]',
-                            'input[class*="challenge"]',
-                            '.cb-container input[type="checkbox"]',
-                            '#challenge-form input[type="checkbox"]'
-                        ]
-                        for selector in checkbox_selectors:
-                            try:
-                                checkbox = driver.find_element(By.CSS_SELECTOR, selector)
-                                if checkbox and checkbox.is_displayed():
-                                    logger.info("[CLOUDFLARE] Found checkbox in iframe, clicking...")
-                                    # Scroll to checkbox
-                                    driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'center'});", checkbox)
-                                    rand_sleep(0.5, 1.0)
-                                    # Use pyautogui for more human-like click
-                                    x, y = element_center_on_screen(driver, checkbox)
-                                    pyautogui.moveTo(x, y, duration=random.uniform(0.3, 0.6))
-                                    rand_sleep(0.2, 0.4)
-                                    pyautogui.click()
-                                    cf_clicked = True
-                                    logger.info("[CLOUDFLARE] Clicked Cloudflare checkbox in iframe")
-                                    rand_sleep(2.0, 3.0)
-                                    break
-                            except Exception:
-                                continue
+                        # Look for checkbox inside iframe - simple <input type="checkbox">
+                        try:
+                            checkbox = driver.find_element(By.CSS_SELECTOR, 'input[type="checkbox"]')
+                            if checkbox and checkbox.is_displayed():
+                                logger.info("[CLOUDFLARE] Found checkbox in iframe, clicking...")
+                                # Scroll to checkbox                                
+                                driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'center'});", checkbox)
+                                rand_sleep(0.5, 1.0)
+                                # Use pyautogui for more human-like click
+                                x, y = element_center_on_screen(driver, checkbox)
+                                pyautogui.moveTo(x, y, duration=random.uniform(0.3, 0.6))
+                                rand_sleep(0.2, 0.4)
+                                pyautogui.click()
+                                cf_clicked = True
+                                logger.info("[CLOUDFLARE] Clicked Cloudflare checkbox in iframe")
+                                rand_sleep(2.0, 3.0)
+                        except Exception as e:
+                            logger.debug(f"[CLOUDFLARE] No checkbox found in iframe: {e}")
                         driver.switch_to.default_content()
                     except Exception as e:
                         logger.debug(f"[CLOUDFLARE] Error handling iframe: {e}")
@@ -192,51 +182,31 @@ def check_and_handle_cloudflare(driver, stage_name="", max_wait=30):
         except Exception as e:
             logger.debug(f"[CLOUDFLARE] Error finding iframe: {e}")
         
-        # If not found in iframe, try to find checkbox on main page
+        # If not found in iframe, try to find checkbox on main page - simple <input type="checkbox">
         if not cf_clicked:
-            checkbox_selectors = [
-                'input[type="checkbox"]',
-                'input[id*="challenge"]',
-                'input[name*="challenge"]',
-                'input[class*="challenge"]',
-                'input[name="cf_captcha_kind"]',
-                '.cb-container input[type="checkbox"]',
-                '#challenge-form input[type="checkbox"]',
-                '//input[@type="checkbox" and (contains(@id, "challenge") or contains(@name, "challenge") or contains(@class, "challenge"))]',
-                '//label[contains(text(), "Verify you are human")]/preceding-sibling::input[@type="checkbox"]',
-                '//label[contains(text(), "Verify you are human")]/following-sibling::input[@type="checkbox"]',
-                '//*[contains(text(), "Verify you are human")]/ancestor::*//input[@type="checkbox"]'
-            ]
-            
-            for selector in checkbox_selectors:
-                try:
-                    if selector.startswith('//'):
-                        checkboxes = driver.find_elements(By.XPATH, selector)
-                    else:
-                        checkboxes = driver.find_elements(By.CSS_SELECTOR, selector)
-                    
-                    for checkbox in checkboxes:
-                        try:
-                            if checkbox.is_displayed():
-                                logger.info(f"[CLOUDFLARE] Found checkbox on main page using selector: {selector[:50]}")
-                                # Scroll to checkbox
-                                driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'center'});", checkbox)
-                                rand_sleep(0.5, 1.0)
-                                # Use pyautogui for more human-like click
-                                x, y = element_center_on_screen(driver, checkbox)
-                                pyautogui.moveTo(x, y, duration=random.uniform(0.3, 0.6))
-                                rand_sleep(0.2, 0.4)
-                                pyautogui.click()
-                                cf_clicked = True
-                                logger.info("[CLOUDFLARE] Clicked Cloudflare checkbox on main page")
-                                rand_sleep(2.0, 3.0)
-                                break
-                        except Exception:
-                            continue
-                    if cf_clicked:
-                        break
-                except Exception:
-                    continue
+            try:
+                checkboxes = driver.find_elements(By.CSS_SELECTOR, 'input[type="checkbox"]')
+                for checkbox in checkboxes:
+                    try:
+                        if checkbox.is_displayed():
+                            logger.info("[CLOUDFLARE] Found checkbox on main page, clicking...")
+                            # Scroll to checkbox
+                            driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'center'});", checkbox)
+                            rand_sleep(0.5, 1.0)
+                            # Use pyautogui for more human-like click
+                            x, y = element_center_on_screen(driver, checkbox)
+                            pyautogui.moveTo(x, y, duration=random.uniform(0.3, 0.6))
+                            rand_sleep(0.2, 0.4)
+                            pyautogui.click()
+                            cf_clicked = True
+                            logger.info("[CLOUDFLARE] Clicked Cloudflare checkbox on main page")
+                            rand_sleep(2.0, 3.0)
+                            break
+                    except Exception as e:
+                        logger.debug(f"[CLOUDFLARE] Error clicking checkbox: {e}")
+                        continue
+            except Exception as e:
+                logger.debug(f"[CLOUDFLARE] Error finding checkbox on main page: {e}")
         
         # If still not clicked, try clicking on the label or text "Verify you are human"
         if not cf_clicked:
@@ -254,18 +224,13 @@ def check_and_handle_cloudflare(driver, stage_name="", max_wait=30):
                         for elem in elements:
                             if elem.is_displayed():
                                 logger.info("[CLOUDFLARE] Found 'Verify you are human' text, clicking on it...")
-                                driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'center'});", elem)
-                                rand_sleep(0.5, 1.0)
-                                x, y = element_center_on_screen(driver, elem)
-                                pyautogui.moveTo(x, y, duration=random.uniform(0.3, 0.6))
-                                rand_sleep(0.2, 0.4)
-                                pyautogui.click()
+                                click_element_via_pyautogui(driver, elem)
                                 cf_clicked = True
                                 logger.info("[CLOUDFLARE] Clicked on 'Verify you are human' text")
-                                rand_sleep(2.0, 3.0)
                                 break
                         if cf_clicked:
-                            break
+                            return True
+                            # break
                     except Exception:
                         continue
             except Exception as e:
@@ -274,7 +239,7 @@ def check_and_handle_cloudflare(driver, stage_name="", max_wait=30):
         # If checkbox was clicked, wait a bit for Cloudflare to process
         if cf_clicked:
             logger.info("[CLOUDFLARE] Waiting for Cloudflare to process the verification...")
-            rand_sleep(3.0, 5.0)  # Give Cloudflare time to process
+            # rand_sleep(3.0, 5.0)  # Give Cloudflare time to process
         
         # Try to wait for Cloudflare to auto-clear after clicking
         start_time = time.time()
@@ -2087,9 +2052,9 @@ def process_account_state_machine(driver, username, password, accindex):
         rand_sleep(2.0, 3.0)
         
         # Check for Cloudflare immediately after page load
-        if not check_and_handle_cloudflare(driver, stage_name="initial_load", max_wait=30):
-            logger.error("[CLOUDFLARE] Cloudflare protection detected on initial page load and could not be bypassed.")
-            return False
+        # if not check_and_handle_cloudflare(driver, stage_name="initial_load", max_wait=30):
+        #     logger.error("[CLOUDFLARE] Cloudflare protection detected on initial page load and could not be bypassed.")
+        #     return False
         
         WebDriverWait(driver, 15).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, 'input[name="text"]'))
@@ -2097,15 +2062,15 @@ def process_account_state_machine(driver, username, password, accindex):
         logger.info("Twitter login page loaded.")
         
         # Additional Cloudflare check after page fully loads
-        rand_sleep(1.0, 2.0)
-        if not check_and_handle_cloudflare(driver, stage_name="after_login_load", max_wait=15):
-            logger.warning("[CLOUDFLARE] Cloudflare detected after login page load, but continuing...")
+        # rand_sleep(1.0, 2.0)
+        # if not check_and_handle_cloudflare(driver, stage_name="after_login_load", max_wait=15):
+        #     logger.warning("[CLOUDFLARE] Cloudflare detected after login page load, but continuing...")
             
     except Exception as e:
         logger.error(f"Failed to open Twitter login page: {e}")
         # Check if it's a Cloudflare issue
-        if not check_and_handle_cloudflare(driver, stage_name="error_recovery", max_wait=10):
-            return False
+        # if not check_and_handle_cloudflare(driver, stage_name="error_recovery", max_wait=10):
+        #     return False
         return False
 
     start_time = time.time()

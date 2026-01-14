@@ -227,10 +227,10 @@ def check_and_handle_cloudflare(driver, stage_name="", max_wait=30):
                                 driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'center'});", elem)
                                 rand_sleep(0.5, 1.0)
                                 x, y = element_center_on_screen(driver, elem)
-                                loc = elem.location_once_scrolled_into_view
-                                size = elem.size                                
-                                print(f"[INFO] Moving to ({loc['x']}, {loc['y']} {size['width']},{size['height']}) and clicking (pyautogui)")
-                                pyautogui.moveTo(x, y, duration=random.uniform(0.3, 0.6))
+                                # loc = elem.location_once_scrolled_into_view
+                                # size = elem.size                                
+                                # print(f"[INFO] Moving to ({loc['x']}, {loc['y']} {size['width']},{size['height']}) and clicking (pyautogui)")
+                                pyautogui.moveTo(x/2 + 30, y + 70, duration=random.uniform(0.3, 0.6))
                                 rand_sleep(0.2, 0.4)
                                 pyautogui.click()
                                 cf_clicked = True

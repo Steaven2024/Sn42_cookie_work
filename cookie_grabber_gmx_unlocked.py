@@ -473,6 +473,7 @@ def _get_parts_text(msg):
             htmls.append(text)
         else:
             plains.append(text)
+            
     return ("\n".join(htmls), "\n".join(plains))
 
 def _extract_code_from_text(full_text: str) -> str | None:

@@ -2256,13 +2256,19 @@ def process_account_state_machine(driver, username, password, accindex):
                 if current_substep == 1:
                     def step1_click_start():
                         # Try multiple variations of start button text
+                        # start_button = find_button_by_text(driver, [
+                        #     "start", "Start", "begin", "Begin",
+                        #     "get started", "Get Started", "Get started",
+                        #     "start now", "Start Now", "Start now",
+                        #     "begin now", "Begin Now", "Begin now",
+                        #     "let's start", "Let's start", "Let's Start"
+                        # ], timeout=1)
+                        
                         start_button = find_button_by_text(driver, [
-                            "start", "Start", "begin", "Begin",
-                            "get started", "Get Started", "Get started",
-                            "start now", "Start Now", "Start now",
-                            "begin now", "Begin Now", "Begin now",
-                            "let's start", "Let's start", "Let's Start"
-                        ], timeout=10)
+                            "start", "Start", "begin", "Begin"
+                        ], timeout=1)
+                        
+
                         if start_button:
                             logger.info("[UNLOCKED][Step1] Found start button, clicking it.")
                             click_element_via_pyautogui_btn(driver, start_button)
@@ -2319,7 +2325,7 @@ def process_account_state_machine(driver, username, password, accindex):
                 elif current_substep == 2:
                     def step2_click_send_email():
                         time.sleep(2)
-                        send_email_button = find_button_by_text(driver, ["send email", "Send email", "send verification email", "Send verification email", "email"], timeout=10)
+                        send_email_button = find_button_by_text(driver, ["send email", "Send email", "send verification email", "Send verification email", "email"], timeout=1)
                         if send_email_button:
                             logger.info("[UNLOCKED][Step2] Found send email button, clicking it.")
                             click_element_via_pyautogui_btn(driver, send_email_button)
@@ -2342,7 +2348,7 @@ def process_account_state_machine(driver, username, password, accindex):
                 elif current_substep == 3:
                     def step3_fill_token_and_verify():
                         time.sleep(2)
-                        token_input = find_token_input(driver, timeout=15)
+                        token_input = find_token_input(driver, timeout=1)
                         if not token_input:
                             logger.warning("[UNLOCKED][Step3] Token input box not found.")
                             return False
@@ -2412,7 +2418,7 @@ def process_account_state_machine(driver, username, password, accindex):
                 elif current_substep == 4:
                     def step4_click_continue_to_x():
                         time.sleep(2)
-                        continue_to_x_button = find_button_by_text(driver, ["continue to X", "Continue to X", "continue to x", "Continue to x", "continue"], timeout=10)
+                        continue_to_x_button = find_button_by_text(driver, ["continue to X", "Continue to X", "continue to x", "Continue to x", "continue"], timeout=1)
                         if continue_to_x_button:
                             logger.info("[UNLOCKED][Step4] Found continue to X button, clicking it.")
                             click_element_via_pyautogui_btn(driver, continue_to_x_button)

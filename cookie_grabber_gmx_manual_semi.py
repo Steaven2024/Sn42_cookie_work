@@ -2309,9 +2309,11 @@ def process_account_state_machine(driver, username, password, accindex):
                         unlocked_substep = 2
                         last_action_time = time.time()
                     else:
-                        logger.error("[UNLOCKED] Step 1 failed after retries. Login failed.")
-                        login_successful = False
-                        break
+                        # logger.error("[UNLOCKED] Step 1 failed after retries. Login failed.")
+                        # login_successful = False
+                        # break
+                        unlocked_substep = 4
+                        last_action_time = time.time()
                 
                 # Step 2: Find and click send email button
                 elif current_substep == 2:
@@ -2401,10 +2403,10 @@ def process_account_state_machine(driver, username, password, accindex):
                     if execute_unlocked_substep("Step3_FillTokenAndVerify", step3_fill_token_and_verify):
                         unlocked_substep = 4
                         last_action_time = time.time()
-                    else:
-                        logger.error("[UNLOCKED] Step 3 failed after retries. Login failed.")
-                        login_successful = False
-                        break
+                    # else:
+                        # logger.error("[UNLOCKED] Step 3 failed after retries. Login failed.")
+                        # login_successful = False
+                        # break
                 
                 # Step 4: Find and click continue to X button
                 elif current_substep == 4:

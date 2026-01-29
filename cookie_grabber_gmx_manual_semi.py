@@ -338,7 +338,7 @@ def start_driver_with_proxy(proxy=None, use_uc=True):
         options.add_argument(f"--window-size={w},{h}")
         if proxy:
             options.add_argument(f"--proxy-server={proxy}")
-        driver = uc.Chrome(options=options)
+        driver = uc.Chrome(options=options, version_main=144)
         # lightweight stealth patches (uc already helps)
         try:
             driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
